@@ -13,7 +13,7 @@ Agent skills from shipping a commercial Apple-platform app, [Huiliu Live (汇流
 Claude Code, for every project:
 
 ```bash
-git clone https://github.com/<owner>/kami-skills.git
+git clone https://github.com/bulai0408/kami-skills.git
 cp -R kami-skills/skills/storekit-account-switch-entitlements ~/.claude/skills/
 ```
 
