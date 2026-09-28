@@ -1,0 +1,57 @@
+{
+  "skill_name": "storekit-account-switch-entitlements",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Our notes app sells a Pro lifetime unlock + monthly sub via StoreKit 2. We're getting a bunch of 1-star reviews from users in China saying Pro vanished after they \"switched region\" and Restore Purchases does nothing. Many of them bought on a US Apple ID because we only launched in the US, then switched back to their CN account. Here's our store code: evals/storekit-account-switch-entitlements/files/StoreManager.swift. What's going on and how do we fix it? Give me a concrete plan and the code changes.",
+      "expected_output": "Explains purchases belong to the paying Apple Account (case B: different account), that AppStore.sync only syncs current account; flags the Storefront.updates clearing bug; proposes a bounded on-device retention (keychain snapshot, bounded window from last owner verification, revocation/family-sharing exclusions) or server accounts as alternative; gives code changes and user-facing copy telling users to switch back.",
+      "files": [
+        "evals/storekit-account-switch-entitlements/files/StoreManager.swift"
+      ],
+      "assertions": [
+        "Identifies that purchases belong to the paying Apple Account and that switching to a different account (not the storefront) is the cause",
+        "States that Restore Purchases / AppStore.sync only syncs the currently signed-in account, so it cannot fix this",
+        "Flags that the Storefront.updates handler clearing isPro is a bug",
+        "Proposes a time-bounded retention window (not a permanent flag) as the fix or a main option",
+        "Specifies that only a fresh verification on the paying account refreshes/extends the window",
+        "Excludes or immediately locks on revoked/refunded transactions (and notes currentEntitlements omits revoked, so latest(for:) or equivalent is needed)",
+        "Excludes family-shared transactions from retention",
+        "Stores the snapshot in the Keychain (not UserDefaults), device-only / not iCloud-synced",
+        "Includes user-facing copy telling users to switch back to the purchasing Apple Account",
+        "Provides concrete Swift code changes"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "can you review evals/storekit-account-switch-entitlements/files/StoreManager.swift for entitlement bugs? we're about to ship to more countries and I want to make sure people don't lose Pro or get it for free. prioritize findings.",
+      "expected_output": "Prioritized review: Storefront.updates wipes entitlement; UserDefaults bool is editable/unbounded launch grant; no revocation via latest(for:) since currentEntitlements omits revoked; restore can't help cross-account; family sharing; recommends policy decision and bounded retention.",
+      "files": [
+        "evals/storekit-account-switch-entitlements/files/StoreManager.swift"
+      ],
+      "assertions": [
+        "Findings are explicitly prioritized/ranked by severity",
+        "Flags the Storefront.updates handler that sets isPro=false as a bug that locks paying users",
+        "Flags the UserDefaults isPro bool as tamperable / granting at launch without verification",
+        "Notes Transaction.currentEntitlements does not return revoked transactions, so revocation detection needs latest(for:) or similar",
+        "Explains that restore() cannot recover purchases made on a different Apple Account",
+        "Recommends an explicit policy decision or a bounded retention approach for account switches",
+        "Mentions subscription grace/expiry or product-type handling issues (e.g., not distinguishing lifetime vs monthly)"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "quick design q for my iOS app (StoreKit 2, one non-consumable 'Pro'). some users switch between their HK and CN apple accounts and lose Pro. simplest fix I can think of is: once we've ever seen a verified Pro transaction, set a keychain flag hasPro=true forever and trust it. any problems with that? what would you do instead? keep it short-ish.",
+      "expected_output": "Pushes back: permanent flag means refunds never revoke, family-sharing leaks, unbounded; recommends bounded retention window refreshed only by owner-account verification, revocation wins, clear UI copy to switch back, keychain unreadable != absent; mentions server account alternative briefly.",
+      "files": [],
+      "assertions": [
+        "Says a permanent hasPro flag means refunds/revocations never take effect",
+        "Mentions family sharing risk (access via organizer that can end) or ownership-type check",
+        "Recommends a bounded time window instead of forever",
+        "Says the window is refreshed only by re-verification on the paying account",
+        "Recommends telling users to switch back to the purchasing account (and not relying on Restore)",
+        "Mentions Keychain read failures (locked device/background) must not be treated as absent, or keychain accessibility/iCloud sync considerations",
+        "Stays reasonably short (under ~600 words)"
+      ]
+    }
+  ]
+}
