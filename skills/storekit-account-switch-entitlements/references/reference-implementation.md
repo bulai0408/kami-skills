@@ -26,6 +26,7 @@ struct EntitlementSnapshot: Codable, Equatable {
         let expirationDate: Date?              // nil for non-consumables
         let gracePeriodExpirationDate: Date?
         let isFamilyShared: Bool
+        let environment: String                 // Transaction.environment.rawValue
     }
 
     let verifiedAt: Date                        // refreshed ONLY by a fresh verification
@@ -54,7 +55,8 @@ extension EntitlementSnapshot.Entry {
     init(_ t: Transaction, graceEnd: Date?) {
         self.init(productID: t.productID, purchaseDate: t.purchaseDate,
                   expirationDate: t.expirationDate, gracePeriodExpirationDate: graceEnd,
-                  isFamilyShared: t.ownershipType == .familyShared)
+                  isFamilyShared: t.ownershipType == .familyShared,
+                  environment: t.environment.rawValue)
     }
 }
 ```
@@ -95,8 +97,11 @@ struct SnapshotStore {
     }
 
     func write(_ snapshot: EntitlementSnapshot?) {
-        SecItemDelete(baseQuery as CFDictionary)
-        guard let snapshot, let data = try? JSONEncoder().encode(snapshot) else { return }
+        guard let snapshot else { SecItemDelete(baseQuery as CFDictionary); return }
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        // Update in place; never delete-then-add, or a failed add erases a valid snapshot.
+        let status = SecItemUpdate(baseQuery as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        guard status == errSecItemNotFound else { return }
         var add = baseQuery
         add[kSecValueData as String] = data
         add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
@@ -115,6 +120,7 @@ struct AccountEvidence {
     var revokedProductIDs: Set<String>            // StoreKit reported a revocation
     var productsWithOwnSubscriptionStatus: Set<String>  // current account has its own status
     var currentAppTransactionID: String? = nil          // nil = unknown (offline / unverified)
+    var currentEnvironment: String? = nil               // AppTransaction.environment.rawValue; nil = unknown
 }
 
 enum AccountSwitchNotice: Equatable {
@@ -151,13 +157,16 @@ func reconcile(current: EntitlementSnapshot?,
         !$0.isFamilyShared
             && !evidence.revokedProductIDs.contains($0.productID)
             && !evidence.productsWithOwnSubscriptionStatus.contains($0.productID)
+            // A sandbox/TestFlight purchase must not carry into a production build, or vice versa.
+            && (evidence.currentEnvironment == nil || $0.environment == evidence.currentEnvironment)
     }, ownerAppTransactionID: current.ownerAppTransactionID)
 
     let retained = pruned.retainable(now: now)
     guard !retained.isEmpty else {
-        // Keep the pruned snapshot as a marker so an expired purchaser sees "switch back".
+        // Window over: keep the pruned snapshot as a marker. Say "switch back" only if something is
+        // still paid for — a lapsed subscription can't be restored by switching accounts.
         return .init(snapshotToStore: pruned, retainedEntries: [],
-                     notice: pruned.entries.isEmpty ? nil : .expired)
+                     notice: pruned.stillPaidFor(now: now).isEmpty ? nil : .expired)
     }
     let until = retained.map { entry -> Date in
         let paidUntil = entry.gracePeriodExpirationDate ?? entry.expirationDate ?? .distantFuture
@@ -206,6 +215,7 @@ final class EntitlementManager {
         }
         if case .verified(let app)? = try? await AppTransaction.shared {
             evidence.currentAppTransactionID = app.appTransactionID   // don't block on failure
+            evidence.currentEnvironment = app.environment.rawValue
         }
         // currentEntitlements omits refunded/revoked transactions, so ask latest(for:) explicitly.
         for productID in Self.productIDs {
@@ -251,4 +261,5 @@ final class EntitlementManager {
 - **Inject the clock** (`now`) everywhere instead of calling `Date.now` inside the rules. Every invariant is time-based, and without injection none of them are testable.
 - **Server features during retention.** When access comes from retention you have no `Transaction.jwsRepresentation` for the current account. Return `nil` from whatever hands a signed transaction to your server, and surface that state in the UI.
 - **Diagnostics.** Expose `accountSwitchNotice` in your diagnostics export. It's the fastest way for support to tell "switched accounts" from "real bug".
+- **Mixed accounts (known limitation of this sketch).** A fresh verification replaces the whole snapshot. If a user has a lifetime unlock on account A and a subscription on account B, verifying on B forgets A's lifetime entry. They're still Pro through B, but if they cancel B they must switch back to A once. Merging per-entry `verifiedAt` fixes this at the cost of more rules. Most apps can accept the simpler version.
 - **Multiple products.** The sketch treats every entry the same. If a lifetime unlock and a subscription can coexist, apply the evidence rules per product: a revoked lifetime purchase shouldn't drop an active subscription, and the reverse holds too.

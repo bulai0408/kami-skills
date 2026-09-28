@@ -9,7 +9,7 @@ A StoreKit 2 app that answers "is this user entitled?" purely from `Transaction.
 
 This skill gives you the mental model, the decision, and a pattern that has shipped in a commercial app on all four Apple platforms.
 
-Size the answer to the question. A quick design question needs the conclusion and the few invariants that matter to it. A fix or a review needs the full treatment.
+Size the answer to the question. For a quick design question ("is X OK?", "keep it short"), keep it to about 300 words: the verdict, the 3–5 invariants that bear on the user's idea, and one line of user-facing copy. Leave the rest of this skill out unless it's asked for. A fix or a code review gets the full treatment.
 
 ## 1. The mental model
 
@@ -65,7 +65,7 @@ Every rule below exists because a simpler version failed in a specific way. Keep
 
 ### Who qualifies
 
-6. **Retain only `ownershipType == .purchased`.** Family-shared access comes through the organizer's account and the family relationship can end, so never retain it.
+6. **Retain only `ownershipType == .purchased`, from the same environment as the running build.** Family-shared access comes through the organizer's account, and the family relationship can end, so never retain it. Record `Transaction.environment` and compare it with `AppTransaction.environment`. Without that check, a TestFlight or sandbox purchase carries into the App Store build for a whole window, because Keychain items survive reinstalls.
 7. **Evidence from the current account always wins over the snapshot.**
    - If StoreKit reports the product as **revoked** (refund, chargeback), lock immediately and remove that entry from the snapshot.
    - If the current account has its **own** subscription status for that product (for example, its own expired subscription), follow it. Don't retain the snapshot's subscription.
@@ -89,7 +89,7 @@ Every rule below exists because a simpler version failed in a specific way. Keep
 Retention without an explanation is confusing: the app works today and locks in a month for no visible reason. The only action that actually fixes it is **switching back to the paying Apple Account and opening the app**. Say exactly that.
 
 - **During retention** (paywall header, settings/license card): *"No purchase was found for the current App Store account. Pro stays available until {date}. Switch back to the Apple Account you purchased with and open the app to renew."*
-- **After the window**, show this only to users this device has verified as purchasers: *"No purchase was found for the current App Store account. Switch back to the Apple Account you purchased with, and open the app to restore Pro."*
+- **After the window**, show this only when this device verified a purchase that is *still paid for*: a lifetime unlock, or a subscription that hasn't reached its end date. Switching accounts can't bring back a subscription that has lapsed, so the message would mislead. Text: *"No purchase was found for the current App Store account. Switch back to the Apple Account you purchased with, and open the app to restore Pro."*
 - **Never** show account-switch messaging to someone who never purchased on this device. For them it's noise, or a hint to go looking for a purchase that doesn't exist.
 - **Don't route these users into Restore Purchases** as the fix. It syncs only the current account, so it fails, and a failed restore reads as "the app is broken".
 - Match the tone of your existing copy. Give the date. Don't apologize at length.
@@ -114,7 +114,7 @@ Unit tests pin the rules, but only a real account switch proves the integration.
 Check for these, most damaging first:
 
 1. Does a storefront change or an empty `currentEntitlements` wipe a cached unlock with no bound or reason? (Case-B lockout.)
-2. Does any local state grant access **without** a bound or a revocation check? (Infinite unlock.)
+2. Does any local state grant access **without** a bound or a revocation check? (Infinite unlock.) Remember that `Transaction.currentEntitlements` leaves out refunded and revoked transactions. To detect a revocation, the code has to ask `Transaction.latest(for:)` and check `revocationDate`. Seeing no revocations in `currentEntitlements` proves nothing.
 3. Does anything other than a fresh owner-account verification extend the window?
 4. Are family-shared transactions retained?
 5. Does a Keychain read error get treated as "no snapshot"?

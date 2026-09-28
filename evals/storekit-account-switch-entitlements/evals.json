@@ -49,7 +49,7 @@
         "Recommends a bounded time window instead of forever",
         "Says the window is refreshed only by re-verification on the paying account",
         "Recommends telling users to switch back to the purchasing account (and not relying on Restore)",
-        "Mentions Keychain read failures (locked device/background) must not be treated as absent, or keychain accessibility/iCloud sync considerations",
+        "Says a Keychain read failure (e.g. locked device / background launch) must not be treated as 'no purchase'",
         "Stays reasonably short (under ~600 words)"
       ]
     }

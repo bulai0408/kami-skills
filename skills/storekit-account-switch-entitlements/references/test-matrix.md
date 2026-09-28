@@ -26,6 +26,9 @@ A useful check that the tests mean something: delete the retention branch and co
 | 16 | Snapshot owner appTransactionID = X | Current account also X, nothing entitled | Not retained; no "switch back" notice (same account: expiry/refund) |
 | 17 | Retained / expired / normal | Render paywall + settings card | Retained shows the date and "switch back to renew"; expired shows "switch back to restore"; normal shows neither |
 | 18 | Snapshot owner X | Current appTransactionID unavailable | Falls back to the other rules (retained if in window) |
+| 19 | Snapshot entry from Sandbox (TestFlight) | Running App Store (Production) build, current account empty | Not retained |
+| 20 | Monthly entry expired *and* window over | Refresh | Pro off; **no** "switch back" notice (nothing left to restore) |
+| 21 | Valid snapshot in Keychain | Snapshot write fails mid-update | Previous snapshot still readable (update in place, never delete-then-add) |
 
 ## Sandbox walkthrough (real system behavior)
 
